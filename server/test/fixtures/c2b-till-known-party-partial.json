@@ -1,0 +1,15 @@
+{
+  "TransactionType": "Buy Goods Online",
+  "TransID": "SI74HJ8K04",
+  "TransTime": "20260903133000",
+  "TransAmount": "5000.00",
+  "BusinessShortCode": "174379",
+  "BillRefNumber": "",
+  "InvoiceNumber": "",
+  "OrgAccountBalance": "",
+  "ThirdPartyTransID": "",
+  "MSISDN": "254712345678",
+  "FirstName": "ACME",
+  "MiddleName": "HARDWARE",
+  "LastName": "LTD"
+}

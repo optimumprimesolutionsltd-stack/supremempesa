@@ -1,0 +1,84 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mpesa
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mpesa}
+      POSTGRES_DB: mpesa_tally
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - '127.0.0.1:5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mpesa -d mpesa_tally']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redisdata:/data
+    ports:
+      - '127.0.0.1:6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ./server
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://mpesa:${POSTGRES_PASSWORD:-mpesa}@postgres:5432/mpesa_tally
+      REDIS_URL: redis://redis:6379
+    # The confirmation endpoint is the only thing Safaricom reaches; put a TLS
+    # terminator (Caddy/nginx/Cloudflare) in front of this port, never expose
+    # it directly.
+    ports:
+      - '127.0.0.1:3000:3000'
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    command: ['node', 'dist/api.js']
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./server
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://mpesa:${POSTGRES_PASSWORD:-mpesa}@postgres:5432/mpesa_tally
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    command: ['node', 'dist/worker.js']
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: ./server
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://mpesa:${POSTGRES_PASSWORD:-mpesa}@postgres:5432/mpesa_tally
+    depends_on:
+      postgres: { condition: service_healthy }
+    command: ['node', 'dist/db/migrate.js']
+    restart: 'no'
+
+  dashboard:
+    build:
+      context: ./dashboard
+    ports:
+      - '127.0.0.1:8080:80'
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

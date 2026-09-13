@@ -1,0 +1,21 @@
+{
+  "name": "mpesa-tally-connector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Auto-post M-Pesa Till/Paybill confirmations into TallyPrime as receipt vouchers",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix dashboard install",
+    "migrate": "npm --prefix server run migrate",
+    "seed": "npm --prefix server run seed",
+    "dev:api": "npm --prefix server run dev:api",
+    "dev:worker": "npm --prefix server run dev:worker",
+    "dev:dashboard": "npm --prefix dashboard run dev",
+    "replay": "npm --prefix server run replay",
+    "test": "npm --prefix server test",
+    "typecheck": "npm --prefix server run typecheck && npm --prefix dashboard run typecheck",
+    "build": "npm --prefix server run build && npm --prefix dashboard run build",
+    "mock-bridge": "npm --prefix server run mock-bridge",
+    "stack:start": "bash .devstack/start.sh",
+    "stack:stop": "bash .devstack/stop.sh"
+  }
+}

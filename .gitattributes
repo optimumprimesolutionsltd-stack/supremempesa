@@ -1,0 +1,5 @@
+# Keep LF in the repository: the Dockerfiles, shell scripts and SQL in here are
+# built and run on Linux, and CRLF sneaking in breaks shebangs and heredocs.
+* text=auto eol=lf
+*.png binary
+*.jpg binary

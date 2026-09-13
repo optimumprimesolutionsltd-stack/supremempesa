@@ -1,0 +1,15 @@
+{
+  "TransactionType": "Pay Bill",
+  "TransID": "SI74HJ8K01",
+  "TransTime": "20260903091245",
+  "TransAmount": "7250.00",
+  "BusinessShortCode": "600638",
+  "BillRefNumber": "INV-1003",
+  "InvoiceNumber": "",
+  "OrgAccountBalance": "482300.00",
+  "ThirdPartyTransID": "",
+  "MSISDN": "254701234567",
+  "FirstName": "PETER",
+  "MiddleName": "",
+  "LastName": "KIMANI"
+}

@@ -1,0 +1,130 @@
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #16191d;
+  --muted: #646b76;
+  --line: #e2e5ea;
+  --accent: #0b6b3a;
+  --accent-soft: #e6f2ec;
+  --warn: #b4690e;
+  --warn-soft: #fdf3e3;
+  --danger: #a51c1c;
+  --danger-soft: #fbeaea;
+  --radius: 10px;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.app { max-width: 1200px; margin: 0 auto; padding: 24px 20px 64px; }
+
+header.top {
+  display: flex;
+  align-items: baseline;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+header.top h1 { font-size: 18px; margin: 0; letter-spacing: -0.01em; }
+header.top .spacer { flex: 1; }
+
+nav.tabs { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
+nav.tabs button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 7px 13px;
+  font: inherit;
+  color: var(--muted);
+  cursor: pointer;
+}
+nav.tabs button.active { background: var(--panel); border-color: var(--line); color: var(--ink); font-weight: 600; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 22px; }
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.card .value { font-size: 24px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.card.alert { background: var(--danger-soft); border-color: #f0c9c9; }
+.card.alert .value { color: var(--danger); }
+.card.warn { background: var(--warn-soft); border-color: #f0dcb8; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.panel h2 { font-size: 14px; margin: 0; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr.selected { background: var(--accent-soft); }
+
+.pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--line);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.pill.posted { background: var(--accent-soft); color: var(--accent); }
+.pill.unmatched { background: var(--warn-soft); color: var(--warn); }
+.pill.ambiguous { background: var(--warn-soft); color: var(--warn); }
+.pill.failed { background: var(--danger-soft); color: var(--danger); }
+.pill.matched { background: #e8eefb; color: #23458f; }
+
+button.action {
+  font: inherit;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 7px;
+  padding: 5px 10px;
+  cursor: pointer;
+  margin-right: 6px;
+}
+button.action:hover { border-color: var(--muted); }
+button.action.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.action.danger { color: var(--danger); border-color: #f0c9c9; }
+button.action:disabled { opacity: 0.5; cursor: not-allowed; }
+
+input, select {
+  font: inherit;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.stack { display: flex; flex-direction: column; gap: 3px; }
+/* A table cell must stay a table-cell: making it a flex container drops it out
+   of the row's column flow, so stack the children instead of the cell. */
+td.stack { display: table-cell; }
+td.stack > * { display: block; }
+td.stack > * + * { margin-top: 3px; }
+.empty { padding: 32px 16px; text-align: center; color: var(--muted); }
+.error { background: var(--danger-soft); color: var(--danger); padding: 10px 14px; border-radius: var(--radius); margin-bottom: 14px; }
+.candidates { margin: 6px 0 0; padding-left: 16px; font-size: 12px; color: var(--muted); }
+.bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; min-width: 90px; }
+.bar > span { display: block; height: 100%; background: var(--accent); }
