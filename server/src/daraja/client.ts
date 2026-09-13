@@ -65,7 +65,8 @@ export async function getAccessToken(creds: DarajaCredentials): Promise<string> 
   return body.access_token;
 }
 
-async function post<T>(path: string, creds: DarajaCredentials, payload: unknown): Promise<T> {
+/** Exported so the STK module can reuse the token cache and error handling. */
+export async function darajaPost<T>(path: string, creds: DarajaCredentials, payload: unknown): Promise<T> {
   const token = await getAccessToken(creds);
   const res = await request(`${config.DARAJA_BASE_URL}${path}`, {
     method: 'POST',
@@ -94,7 +95,7 @@ export async function registerUrls(
   creds: DarajaCredentials,
   opts: RegisterUrlOptions,
 ): Promise<unknown> {
-  return post('/mpesa/c2b/v1/registerurl', creds, {
+  return darajaPost('/mpesa/c2b/v1/registerurl', creds, {
     ShortCode: opts.shortcode,
     ResponseType: opts.responseType ?? 'Completed',
     ConfirmationURL: opts.confirmationUrl,
@@ -124,7 +125,7 @@ export async function queryTransactionStatus(
   creds: DarajaCredentials,
   opts: TransactionStatusOptions,
 ): Promise<unknown> {
-  return post('/mpesa/transactionstatus/v1/query', creds, {
+  return darajaPost('/mpesa/transactionstatus/v1/query', creds, {
     Initiator: opts.initiator,
     SecurityCredential: opts.securityCredential,
     CommandID: 'TransactionStatusQuery',

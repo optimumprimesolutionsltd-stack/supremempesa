@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
+import { Collect } from './pages/Collect.js';
 import { Reconciliation } from './pages/Reconciliation.js';
 import { ReviewQueue } from './pages/ReviewQueue.js';
 import { Transactions } from './pages/Transactions.js';
 import { api, getOperator, getToken, setOperator, setToken, type Health } from './lib/api.js';
 
-type Tab = 'review' | 'transactions' | 'reconciliation';
+type Tab = 'review' | 'collect' | 'transactions' | 'reconciliation';
 
 export function App() {
   const [tab, setTab] = useState<Tab>('review');
@@ -47,6 +48,9 @@ export function App() {
             ? ` (${health.unmatchedCount + health.ambiguousCount})`
             : ''}
         </button>
+        <button className={tab === 'collect' ? 'active' : ''} onClick={() => setTab('collect')}>
+          Collect
+        </button>
         <button className={tab === 'transactions' ? 'active' : ''} onClick={() => setTab('transactions')}>
           Transactions
         </button>
@@ -56,6 +60,7 @@ export function App() {
       </nav>
 
       {tab === 'review' && <ReviewQueue />}
+      {tab === 'collect' && <Collect />}
       {tab === 'transactions' && <Transactions />}
       {tab === 'reconciliation' && <Reconciliation />}
     </div>

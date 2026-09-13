@@ -25,18 +25,35 @@ export async function seed(): Promise<void> {
   const paybillSecret = process.env.DEMO_PAYBILL_SECRET ?? randomBytes(24).toString('hex');
   const tillSecret = process.env.DEMO_TILL_SECRET ?? randomBytes(24).toString('hex');
 
+  const paybillStkSecret = process.env.DEMO_PAYBILL_STK_SECRET ?? randomBytes(24).toString('hex');
+  const tillStkSecret = process.env.DEMO_TILL_STK_SECRET ?? randomBytes(24).toString('hex');
+
   await query(
-    `INSERT INTO shortcodes (tenant_id, shortcode, kind, label, tally_bank_ledger, webhook_secret, daraja_consumer_key, daraja_secret_ref)
-     VALUES ($1, '600638', 'paybill', 'Paybill 600638', 'M-Pesa Paybill', $2, $3, 'env:DARAJA_DEMO_SECRET')
-     ON CONFLICT (shortcode) DO UPDATE SET webhook_secret = EXCLUDED.webhook_secret`,
-    [tenantId, paybillSecret, process.env.DARAJA_DEMO_KEY ?? null],
+    `INSERT INTO shortcodes (tenant_id, shortcode, kind, label, tally_bank_ledger, webhook_secret,
+                             daraja_consumer_key, daraja_secret_ref, daraja_passkey_ref, stk_callback_secret)
+     VALUES ($1, '600638', 'paybill', 'Paybill 600638', 'M-Pesa Paybill', $2, $3,
+             'env:DARAJA_DEMO_SECRET', 'env:DARAJA_DEMO_PASSKEY', $4)
+     ON CONFLICT (shortcode) DO UPDATE
+       SET webhook_secret = EXCLUDED.webhook_secret,
+           stk_callback_secret = EXCLUDED.stk_callback_secret,
+           daraja_consumer_key = EXCLUDED.daraja_consumer_key,
+           daraja_secret_ref = EXCLUDED.daraja_secret_ref,
+           daraja_passkey_ref = EXCLUDED.daraja_passkey_ref`,
+    [tenantId, paybillSecret, process.env.DARAJA_DEMO_KEY ?? 'demo-consumer-key', paybillStkSecret],
   );
 
   await query(
-    `INSERT INTO shortcodes (tenant_id, shortcode, kind, label, tally_bank_ledger, webhook_secret)
-     VALUES ($1, '174379', 'till', 'Till 174379', 'M-Pesa Till', $2)
-     ON CONFLICT (shortcode) DO UPDATE SET webhook_secret = EXCLUDED.webhook_secret`,
-    [tenantId, tillSecret],
+    `INSERT INTO shortcodes (tenant_id, shortcode, kind, label, tally_bank_ledger, webhook_secret,
+                             daraja_consumer_key, daraja_secret_ref, daraja_passkey_ref, stk_callback_secret)
+     VALUES ($1, '174379', 'till', 'Till 174379', 'M-Pesa Till', $2, $3,
+             'env:DARAJA_DEMO_SECRET', 'env:DARAJA_DEMO_PASSKEY', $4)
+     ON CONFLICT (shortcode) DO UPDATE
+       SET webhook_secret = EXCLUDED.webhook_secret,
+           stk_callback_secret = EXCLUDED.stk_callback_secret,
+           daraja_consumer_key = EXCLUDED.daraja_consumer_key,
+           daraja_secret_ref = EXCLUDED.daraja_secret_ref,
+           daraja_passkey_ref = EXCLUDED.daraja_passkey_ref`,
+    [tenantId, tillSecret, process.env.DARAJA_DEMO_KEY ?? 'demo-consumer-key', tillStkSecret],
   );
 
   const invoices: Array<[string, string, string | null, string, string]> = [
@@ -70,6 +87,8 @@ export async function seed(): Promise<void> {
       tenantId,
       paybillConfirmationUrl: `${config.PUBLIC_BASE_URL}/c2b/${paybillSecret}/confirmation`,
       tillConfirmationUrl: `${config.PUBLIC_BASE_URL}/c2b/${tillSecret}/confirmation`,
+      paybillStkCallbackUrl: `${config.PUBLIC_BASE_URL}/stk/${paybillStkSecret}/callback`,
+      tillStkCallbackUrl: `${config.PUBLIC_BASE_URL}/stk/${tillStkSecret}/callback`,
     },
     'seed complete',
   );

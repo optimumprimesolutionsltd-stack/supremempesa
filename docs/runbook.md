@@ -22,7 +22,46 @@
 5. Make a KES 1 test payment. It should appear in the review queue within
    seconds. Check the audit trail shows `transaction.captured`.
 
-## The five alarms that matter
+## Enabling STK Push on a shortcode
+
+A shortcode can receive payments without a passkey, but it cannot request them.
+To turn on STK Push:
+
+1. Get the Lipa na M-Pesa Online passkey for the shortcode from the Daraja
+   portal. Store it in your secret store, never in the database.
+2. Point the row at it, and give the STK callback its own secret -- separate
+   from the C2B one so the two rotate independently:
+
+   ```sql
+   UPDATE shortcodes
+      SET daraja_passkey_ref = 'env:DARAJA_PASSKEY_ACME',
+          stk_callback_secret = encode(gen_random_bytes(24), 'hex')
+    WHERE shortcode = '600638'
+   RETURNING stk_callback_secret;
+   ```
+
+3. The callback URL is `{PUBLIC_BASE_URL}/stk/{stk_callback_secret}/callback`.
+   Unlike C2B, it is sent with each request rather than registered once, so
+   there is nothing to register -- but `PUBLIC_BASE_URL` must be correct and
+   publicly reachable, or every prompt will be paid and never confirmed.
+4. Push KES 1 to your own phone from the Collect tab and confirm it posts.
+
+Note that a Till uses `CustomerBuyGoodsOnline` and a Paybill
+`CustomerPayBillOnline`; the connector picks this from `shortcodes.kind`, so
+that column has to be right or Daraja rejects every push.
+
+## A customer says they paid but the prompt still says pending
+
+STK callbacks get lost. The reconciler queries Daraja every two minutes for any
+prompt past its expiry, and **Chase unanswered** on the Collect tab does it on
+demand.
+
+If the status query says paid but no receipt has appeared, the money is real and
+the receipt will arrive with the C2B confirmation. If nothing arrives within the
+hour, check `raw_callbacks` for the shortcode and confirm `PUBLIC_BASE_URL`
+matches where Safaricom is actually calling.
+
+## The six alarms that matter
 
 | Signal | Means | First move |
 | --- | --- | --- |
@@ -31,6 +70,7 @@
 | `failedPosts > 0` | Permanent Tally rejection | Read `post_error`: usually a missing ledger or voucher type |
 | Review queue growing daily | Matching is not earning its keep for this merchant | Check whether they use Paybill references at all; consider phone→ledger seeding |
 | `verification.failed` in the audit log | A confirmation Safaricom does not recognise | **Treat as an intrusion.** Rotate the webhook secret, review `raw_callbacks.source_ip` |
+| STK prompts stuck `pending` | Callbacks are not reaching us at all | Check `PUBLIC_BASE_URL` and the tunnel; the reconciler will settle them meanwhile |
 
 ## Tally was closed all weekend
 

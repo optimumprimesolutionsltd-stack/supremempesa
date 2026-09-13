@@ -57,6 +57,7 @@ export const MAINTENANCE_JOB = {
   sweepRawCallbacks: 'sweep-raw-callbacks',
   syncInvoices: 'sync-invoices',
   healthCheck: 'health-check',
+  reconcileStk: 'reconcile-stk',
 } as const;
 
 /** Repeatable jobs are idempotent by key: safe to call on every boot. */
@@ -75,6 +76,12 @@ export async function scheduleRepeatables(): Promise<void> {
     MAINTENANCE_JOB.syncInvoices,
     {},
     { repeat: { pattern: '*/10 * * * *' }, jobId: 'repeat-invoices' },
+  );
+  // STK prompts expire in about a minute; chase the ones that never answered.
+  await maintenanceQueue.add(
+    MAINTENANCE_JOB.reconcileStk,
+    {},
+    { repeat: { pattern: '*/2 * * * *' }, jobId: 'repeat-stk' },
   );
   await maintenanceQueue.add(
     MAINTENANCE_JOB.healthCheck,

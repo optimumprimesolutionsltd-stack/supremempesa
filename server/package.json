@@ -16,7 +16,8 @@
     "test": "node --import tsx --test test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "mock-bridge": "tsx src/scripts/mockBridge.ts",
-    "test:integration": "node --import tsx --test test/integration/*.test.ts"
+    "test:integration": "node --import tsx --test --test-concurrency=1 test/integration/*.test.ts",
+    "mock-daraja": "tsx src/scripts/mockDaraja.ts"
   },
   "dependencies": {
     "bullmq": "^5.34.0",

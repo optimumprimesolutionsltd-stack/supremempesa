@@ -75,6 +75,23 @@ export interface Invoice {
   status: string;
 }
 
+export interface StkRequest {
+  id: string;
+  msisdn: string;
+  amount: string;
+  account_reference: string;
+  state: 'pending' | 'success' | 'failed' | 'timeout' | 'error';
+  result_desc: string | null;
+  mpesa_receipt: string | null;
+  created_at: string;
+  updated_at: string;
+  requested_by: string;
+  voucher_number: string | null;
+  party_ledger: string | null;
+  trans_id: string | null;
+  transaction_status: string | null;
+}
+
 export interface Health {
   minutesSinceLastCallback: number | null;
   unmatchedCount: number;
@@ -134,6 +151,14 @@ export const api = {
   rematch: (id: string) => call<{ ok: boolean }>(`/transactions/${id}/rematch`, { method: 'POST' }),
   retryPost: (id: string) => call<{ ok: boolean }>(`/transactions/${id}/retry-post`, { method: 'POST' }),
   syncInvoices: () => call<{ results: unknown[] }>('/sync-invoices', { method: 'POST' }),
+  requestPayment: (invoiceId: string, body: { msisdn?: string; amount?: number; description?: string }) =>
+    call<{ status: string; reason?: string; customerMessage?: string }>(
+      `/invoices/${invoiceId}/request-payment`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+  stkRequests: (state?: string) =>
+    call<{ requests: StkRequest[] }>(`/stk-requests${state ? `?state=${state}` : ''}`),
+  reconcileStk: () => call<{ settled: number }>('/stk-requests/reconcile', { method: 'POST' }),
   variance: (tenantId: string, days = 14) =>
     call<{ variance: VarianceRow[] }>(`/variance?tenantId=${tenantId}&days=${days}`),
 };

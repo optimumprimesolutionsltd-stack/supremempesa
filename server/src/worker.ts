@@ -12,6 +12,7 @@ import {
 import { requeueStuckPosts, runHealthCheck, sweepRawCallbacks } from './services/backstop.js';
 import { ingestRawCallback } from './services/ingest.js';
 import { syncAllTenants } from './services/invoices.js';
+import { reconcileStalePushes } from './services/stk.js';
 import { matchTransaction } from './services/matching.js';
 import { postMatch } from './services/posting.js';
 
@@ -69,6 +70,8 @@ export function startWorkers(): Worker[] {
           return syncAllTenants();
         case MAINTENANCE_JOB.backstopPoll:
           return { requeued: await requeueStuckPosts() };
+        case MAINTENANCE_JOB.reconcileStk:
+          return { settled: await reconcileStalePushes() };
         case MAINTENANCE_JOB.healthCheck:
           return runHealthCheck();
         default:

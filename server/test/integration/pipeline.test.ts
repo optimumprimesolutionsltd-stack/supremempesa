@@ -42,9 +42,29 @@ let query: (sql: string, params?: unknown[]) => Promise<any[]>;
 
 let apiUrl: string;
 let webhookSecret: string;
+let stkSecret: string;
+let tenantId: string;
+
+/** Fixed rather than ephemeral: Daraja is told this URL before the API binds. */
+const API_PORT = Number(process.env.ITEST_API_PORT ?? 3999);
+const DARAJA_PORT = Number(process.env.ITEST_DARAJA_PORT ?? 5061);
+
+let daraja: { close(): void };
 
 before(async () => {
   if (skip) return;
+
+  // Must happen before the first import of src/config.ts, which snapshots the
+  // environment at module load.
+  process.env.DARAJA_BASE_URL = `http://127.0.0.1:${DARAJA_PORT}`;
+  process.env.PUBLIC_BASE_URL = `http://127.0.0.1:${API_PORT}`;
+  process.env.DARAJA_TEST_SECRET = 'test-consumer-secret';
+  process.env.DARAJA_TEST_PASSKEY = 'test-passkey-0123456789abcdef';
+
+  const { createMockDaraja } = await import('../../src/scripts/mockDaraja.js');
+  const darajaServer = createMockDaraja().listen(DARAJA_PORT);
+  await new Promise((r) => darajaServer.once('listening', r));
+  daraja = darajaServer;
 
   const dbMod = await import('../../src/db/pool.js');
   query = dbMod.query;
@@ -72,17 +92,23 @@ before(async () => {
 
   webhookSecret = randomBytes(24).toString('hex');
 
-  const [tenant] = await query(
+  const [tenantRow] = await query(
     `INSERT INTO tenants (slug, name, tally_company, bridge_url, bridge_token)
      VALUES ('itest', 'Integration Traders', 'Integration Traders', $1, 'test-token')
      RETURNING id`,
     [bridgeUrl],
   );
+  const tenant = tenantRow;
+  tenantId = tenant.id;
+
+  stkSecret = randomBytes(24).toString('hex');
 
   await query(
-    `INSERT INTO shortcodes (tenant_id, shortcode, kind, label, tally_bank_ledger, webhook_secret)
-     VALUES ($1, '600638', 'paybill', 'Paybill 600638', 'M-Pesa Paybill', $2)`,
-    [tenant.id, webhookSecret],
+    `INSERT INTO shortcodes (tenant_id, shortcode, kind, label, tally_bank_ledger, webhook_secret,
+                             daraja_consumer_key, daraja_secret_ref, daraja_passkey_ref, stk_callback_secret)
+     VALUES ($1, '600638', 'paybill', 'Paybill 600638', 'M-Pesa Paybill', $2, 'test-key',
+             'env:DARAJA_TEST_SECRET', 'env:DARAJA_TEST_PASSKEY', $3)`,
+    [tenant.id, webhookSecret, stkSecret],
   );
 
   await query(
@@ -101,9 +127,9 @@ before(async () => {
   closeQueues = queueMod.closeQueues;
 
   const { createApp } = await import('../../src/api.js');
-  const apiServer = createApp().listen(0);
+  const apiServer = createApp().listen(API_PORT);
   await new Promise((r) => apiServer.once('listening', r));
-  apiUrl = `http://127.0.0.1:${(apiServer.address() as AddressInfo).port}`;
+  apiUrl = `http://127.0.0.1:${API_PORT}`;
   api = apiServer;
 });
 
@@ -111,6 +137,7 @@ after(async () => {
   if (skip) return;
   api?.close();
   bridge?.close();
+  daraja?.close();
   await stopWorkers?.();
   await closeQueues?.();
   await closePool?.();
@@ -273,4 +300,195 @@ test('an unknown webhook secret is acknowledged but never posted', { skip }, asy
   await new Promise((r) => setTimeout(r, 1500));
   const rows = await query(`SELECT id FROM mpesa_transactions WHERE trans_id = 'ITEST00004'`);
   assert.equal(rows.length, 0, 'a callback for an unknown shortcode created a transaction');
+});
+
+// --- STK Push -------------------------------------------------------------
+// The outbound half. A push names the invoice before the money moves, so the
+// payment it produces arrives already matched and skips the review queue.
+
+async function push(body: Record<string, unknown>, invoiceId: string): Promise<Response> {
+  return fetch(`${apiUrl}/api/invoices/${invoiceId}/request-payment`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${process.env.ADMIN_API_TOKEN}`,
+      'x-operator': 'itest',
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+async function invoiceIdFor(voucher: string): Promise<string> {
+  const [row] = await query('SELECT id FROM invoices WHERE voucher_number = $1', [voucher]);
+  return row.id;
+}
+
+async function waitForStk(reference: string, want: string, timeoutMs = 30_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let last = 'never created';
+  while (Date.now() < deadline) {
+    const rows = await query(
+      `SELECT state FROM stk_requests WHERE account_reference = $1 ORDER BY created_at DESC LIMIT 1`,
+      [reference],
+    );
+    last = rows[0]?.state ?? 'never created';
+    if (last === want) return;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error(`${reference}: expected STK state '${want}', last saw '${last}'`);
+}
+
+test('a payment prompt is paid and posts without ever touching the review queue', { skip }, async () => {
+  const res = await push({ msisdn: '254799000111' }, await invoiceIdFor('INV-7002'));
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { status: string; checkoutRequestId?: string };
+  assert.equal(body.status, 'sent');
+  assert.ok(body.checkoutRequestId, 'no CheckoutRequestID returned');
+
+  await waitForStk('INV-7002', 'success');
+
+  const [stk] = await query(
+    `SELECT mpesa_receipt, transaction_id FROM stk_requests WHERE account_reference = 'INV-7002'`,
+  );
+  assert.ok(stk.mpesa_receipt, 'paid prompt carried no receipt');
+
+  // The payment is an ordinary transaction, matched without any inference.
+  const [match] = await query(
+    `SELECT m.method, m.confidence, m.state, i.voucher_number
+       FROM matches m JOIN invoices i ON i.id = m.invoice_id
+      WHERE m.transaction_id = $1`,
+    [stk.transaction_id],
+  );
+  assert.equal(match.method, 'stk_push');
+  assert.equal(match.confidence, '1.00');
+  assert.equal(match.voucher_number, 'INV-7002');
+
+  const rows = await query('SELECT trans_id FROM mpesa_transactions WHERE id = $1', [stk.transaction_id]);
+  await waitForStatus(rows[0].trans_id, 'posted');
+
+  const [invoice] = await query(`SELECT status FROM invoices WHERE voucher_number = 'INV-7002'`);
+  assert.equal(invoice.status, 'closed');
+});
+
+test('the same invoice cannot have two prompts on one handset', { skip }, async () => {
+  const invoiceId = await invoiceIdFor('INV-7003');
+
+  // Stop the callback landing, so the first prompt stays pending.
+  process.env.MOCK_DARAJA_MODE = 'nocallback';
+  try {
+    const first = await push({ msisdn: '254799000222' }, invoiceId);
+    assert.equal(first.status, 200);
+
+    const second = await push({ msisdn: '254799000222' }, invoiceId);
+    // 409, not 500: this is a business fact the operator should read, and
+    // pushing twice puts two prompts on one handset for the same invoice.
+    assert.equal(second.status, 409);
+    const body = (await second.json()) as { status: string; reason: string };
+    assert.equal(body.status, 'rejected');
+    assert.match(body.reason, /already on the customer/);
+  } finally {
+    process.env.MOCK_DARAJA_MODE = 'paid';
+  }
+});
+
+test('an STK payment that also arrives as a C2B confirmation posts only once', { skip }, async () => {
+  // A Paybill STK payment generates BOTH an STK callback and an ordinary C2B
+  // confirmation for the same receipt. Idempotency on trans_id is what stops
+  // the customer being credited twice.
+  const [stk] = await query(
+    `SELECT mpesa_receipt, transaction_id FROM stk_requests
+      WHERE account_reference = 'INV-7002' AND state = 'success'`,
+  );
+  assert.ok(stk.mpesa_receipt);
+
+  const res = await confirm(
+    payload({
+      TransID: stk.mpesa_receipt,
+      TransAmount: '4800.00',
+      BillRefNumber: 'INV-7002',
+      MSISDN: '254799000111',
+    }),
+  );
+  assert.equal(res.status, 200);
+  await new Promise((r) => setTimeout(r, 2500));
+
+  const txns = await query('SELECT id FROM mpesa_transactions WHERE trans_id = $1', [stk.mpesa_receipt]);
+  assert.equal(txns.length, 1, 'the C2B confirmation created a second transaction');
+
+  const posts = await query(
+    `SELECT id FROM tally_post_log WHERE transaction_id = $1 AND state = 'posted'`,
+    [stk.transaction_id],
+  );
+  assert.equal(posts.length, 1, 'the payment was posted to Tally twice');
+});
+
+test('a cancelled prompt leaves the invoice untouched', { skip }, async () => {
+  process.env.MOCK_DARAJA_MODE = 'cancelled';
+  try {
+    // Its own invoice: the earlier tests settle theirs, and a settled invoice is
+    // (correctly) refused before a prompt is ever sent.
+    const [invoice] = await query(
+      `INSERT INTO invoices (tenant_id, voucher_number, party_ledger, invoice_date, amount)
+       VALUES ($1, 'INV-7005', 'Cancelling Customer', CURRENT_DATE, '2500.00') RETURNING id`,
+      [tenantId],
+    );
+
+    const res = await push({ msisdn: '254799000333' }, invoice.id);
+    assert.equal(res.status, 200);
+    await waitForStk('INV-7005', 'failed');
+
+    const [stk] = await query(
+      `SELECT result_code, result_desc, mpesa_receipt FROM stk_requests
+        WHERE account_reference = 'INV-7005' ORDER BY created_at DESC LIMIT 1`,
+    );
+    assert.equal(stk.result_code, '1032');
+    // Plain words: support reads this, not a Daraja code table.
+    assert.match(stk.result_desc, /customer cancelled/);
+    assert.equal(stk.mpesa_receipt, null);
+
+    const [untouched] = await query(
+      `SELECT amount_settled, status FROM invoices WHERE voucher_number = 'INV-7005'`,
+    );
+    assert.equal(untouched.amount_settled, '0.00');
+    assert.equal(untouched.status, 'open');
+  } finally {
+    process.env.MOCK_DARAJA_MODE = 'paid';
+  }
+});
+
+test('a prompt whose callback is lost is settled by the status query', { skip }, async () => {
+  // STK callbacks go missing often enough that without this a customer who paid
+  // sits pending forever while the merchant chases money they already have.
+  process.env.MOCK_DARAJA_MODE = 'nocallback';
+  try {
+    const [invoice] = await query(
+      `INSERT INTO invoices (tenant_id, voucher_number, party_ledger, invoice_date, amount)
+       VALUES ($1, 'INV-7004', 'Lost Callback Ltd', CURRENT_DATE, '1500.00') RETURNING id`,
+      [tenantId],
+    );
+
+    const res = await push({ msisdn: '254799000444' }, invoice.id);
+    assert.equal(res.status, 200);
+    await new Promise((r) => setTimeout(r, 1000));
+
+    const [before] = await query(
+      `SELECT state FROM stk_requests WHERE account_reference = 'INV-7004'`,
+    );
+    assert.equal(before.state, 'pending', 'the callback should not have arrived');
+
+    // Age it past expiry so the reconciler considers it.
+    await query(
+      `UPDATE stk_requests SET expires_at = now() - interval '5 minutes'
+        WHERE account_reference = 'INV-7004'`,
+    );
+
+    const { reconcileStalePushes } = await import('../../src/services/stk.js');
+    const settled = await reconcileStalePushes();
+    assert.ok(settled >= 1, 'the reconciler settled nothing');
+
+    const [after] = await query(`SELECT state FROM stk_requests WHERE account_reference = 'INV-7004'`);
+    assert.equal(after.state, 'success');
+  } finally {
+    process.env.MOCK_DARAJA_MODE = 'paid';
+  }
 });

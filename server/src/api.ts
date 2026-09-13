@@ -8,6 +8,7 @@ import { errorHandler, notFoundHandler } from './middleware/index.js';
 import { adminRouter } from './routes/admin.js';
 import { c2bRouter } from './routes/c2b.js';
 import { resultsRouter } from './routes/results.js';
+import { stkRouter } from './routes/stk.js';
 import { closeQueues, connection } from './queue/queues.js';
 
 export function createApp() {
@@ -58,6 +59,7 @@ export function createApp() {
   });
 
   app.use('/c2b', c2bRouter);
+  app.use('/stk', stkRouter);
   app.use('/daraja', resultsRouter);
   app.use('/api', adminRouter);
 
@@ -68,7 +70,7 @@ export function createApp() {
 }
 
 function redactPath(url: string): string {
-  return url.replace(/(\/c2b\/)[^/]+/, '$1***');
+  return url.replace(/(\/c2b\/)[^/]+/, '$1***').replace(/(\/stk\/)[^/]+/, '$1***');
 }
 
 if (isMain(import.meta.url)) {

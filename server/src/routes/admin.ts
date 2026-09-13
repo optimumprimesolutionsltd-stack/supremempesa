@@ -9,6 +9,7 @@ import { dailyVariance, healthSnapshot } from '../services/backstop.js';
 import { syncAllTenants } from '../services/invoices.js';
 import { matchTransaction } from '../services/matching.js';
 import { reverseTransaction } from '../services/posting.js';
+import { reconcileStalePushes, requestPayment } from '../services/stk.js';
 
 export const adminRouter = Router();
 adminRouter.use(requireAdmin);
@@ -403,5 +404,81 @@ adminRouter.get(
       postQueue.getJobCounts('waiting', 'active', 'failed', 'delayed'),
     ]);
     res.json({ match, post });
+  }),
+);
+
+const pushBody = z.object({
+  msisdn: z.string().min(9).optional(),
+  amount: z.number().int().positive().optional(),
+  description: z.string().max(60).optional(),
+  shortcodeId: z.string().uuid().optional(),
+});
+
+/**
+ * Put a payment prompt on the customer's handset for this invoice.
+ *
+ * The outbound half of the connector: instead of waiting for the customer to
+ * pay and then working out what for, this names the invoice up front, so the
+ * payment comes back already matched and never touches the review queue.
+ */
+adminRouter.post(
+  '/invoices/:id/request-payment',
+  asyncHandler(async (req, res) => {
+    const parsed = pushBody.safeParse(req.body ?? {});
+    if (!parsed.success) throw badRequest('invalid body', parsed.error.issues);
+
+    const result = await requestPayment({
+      invoiceId: String(req.params.id),
+      ...parsed.data,
+      actor: actorOf(req),
+    });
+
+    // A refusal here is usually a business fact the operator needs to read
+    // ("already settled", "no phone number"), not a server fault.
+    res.status(result.status === 'sent' ? 200 : 409).json(result);
+  }),
+);
+
+/** Ad hoc prompt, not tied to an invoice: counter sales, deposits. */
+adminRouter.post(
+  '/request-payment',
+  asyncHandler(async (req, res) => {
+    const parsed = pushBody.extend({ shortcodeId: z.string().uuid() }).safeParse(req.body ?? {});
+    if (!parsed.success) throw badRequest('invalid body', parsed.error.issues);
+    if (!parsed.data.msisdn || !parsed.data.amount) {
+      throw badRequest('an ad hoc prompt needs both msisdn and amount');
+    }
+
+    const result = await requestPayment({ ...parsed.data, actor: actorOf(req) });
+    res.status(result.status === 'sent' ? 200 : 409).json(result);
+  }),
+);
+
+adminRouter.get(
+  '/stk-requests',
+  asyncHandler(async (req, res) => {
+    const state = req.query.state ? String(req.query.state).split(',') : null;
+    const rows = await query(
+      `SELECT r.id, r.msisdn, r.amount, r.account_reference, r.state, r.result_desc,
+              r.mpesa_receipt, r.created_at, r.updated_at, r.requested_by,
+              i.voucher_number, i.party_ledger,
+              t.trans_id, t.status AS transaction_status
+         FROM stk_requests r
+         LEFT JOIN invoices i ON i.id = r.invoice_id
+         LEFT JOIN mpesa_transactions t ON t.id = r.transaction_id
+        WHERE ($1::text[] IS NULL OR r.state::text = ANY($1))
+        ORDER BY r.created_at DESC
+        LIMIT 100`,
+      [state],
+    );
+    res.json({ requests: rows });
+  }),
+);
+
+/** Chase prompts that never answered, on demand rather than waiting for the job. */
+adminRouter.post(
+  '/stk-requests/reconcile',
+  asyncHandler(async (_req, res) => {
+    res.json({ settled: await reconcileStalePushes() });
   }),
 );
