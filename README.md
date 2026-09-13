@@ -1,5 +1,7 @@
 # M-Pesa → TallyPrime connector
 
+[![CI](https://github.com/optimumprimesolutionsltd-stack/supremempesa/actions/workflows/ci.yml/badge.svg)](https://github.com/optimumprimesolutionsltd-stack/supremempesa/actions/workflows/ci.yml)
+
 Auto-posts M-Pesa Till/Paybill confirmations into TallyPrime as receipt
 vouchers, allocated against the right customer invoice, and queues anything it
 is not certain about for one-tap human review.
@@ -96,6 +98,31 @@ npm run replay                 # prints what the matcher decides for each fixtur
 Drop any real (anonymised) confirmation payload into `server/test/fixtures/` and
 it becomes a regression case.
 
+### Integration tests
+
+The unit suite cannot catch the failures that actually happen. The first three
+bugs found in this project all passed 31/31 unit assertions: job ids BullMQ
+rejected at enqueue time, a webhook secret leaking through a log serializer, and
+review candidates the dashboard could not read. So there is a second suite that
+wires the real pieces together -- HTTP callback, BullMQ, Postgres, mock Bridge --
+and drives payments end to end.
+
+It truncates its database and flushes its Redis index, so give it dedicated
+ones. It refuses to start unless the database name contains `test`:
+
+```bash
+cd server
+createdb mpesa_tally_test     # or: .devstack/pgsql/bin/createdb.exe -h 127.0.0.1 -U mpesa mpesa_tally_test
+DATABASE_URL=postgres://mpesa:mpesa@127.0.0.1:5432/mpesa_tally_test REDIS_URL=redis://127.0.0.1:6379/1 ADMIN_API_TOKEN=0123456789abcdef0123456789abcdef npm run test:integration
+```
+
+The separate Redis index matters: a dev worker on index 0 would steal the jobs
+and the test would time out waiting for a receipt it never gets.
+
+CI runs all of it on every push -- unit tests on Node 22 and 24, the dashboard
+build, and the pipeline suite against real Postgres 16 and Redis 7 service
+containers. See `.github/workflows/ci.yml`.
+
 ### Going live
 
 `docs/runbook.md` covers shortcode onboarding, the five alarms worth waking up
@@ -148,8 +175,10 @@ server/
   src/tally/       receipt voucher XML, Bridge client
   src/routes/      c2b webhook, Daraja result callbacks, admin API
   test/fixtures/   recorded confirmations used by the tests and the replay tool
+  test/integration/ end-to-end pipeline tests (need Postgres + Redis)
 dashboard/         review queue, transactions + audit trail, daily variance
 docs/              Bridge contract, operational runbook
+.github/workflows/ CI: unit, dashboard build, end-to-end pipeline
 ```
 
 ## Before this touches real money

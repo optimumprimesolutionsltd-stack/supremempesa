@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push makes an in-flight run irrelevant; don't pay for both.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: unit (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 is what the Dockerfile ships; 24 is what it gets developed on.
+        node: ['22.x', '24.x']
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      # The matcher's decisions are the product. Printing them on every run makes
+      # a behaviour change visible in the diff of the log, not just in a pass/fail.
+      - name: Replay recorded confirmations
+        run: npm run replay
+
+  dashboard:
+    name: dashboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+  integration:
+    name: integration (postgres + redis)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: server
+
+    # The unit suite cannot see the failures that actually happen: job ids the
+    # queue rejects, a secret leaking through a log serializer, a voucher Tally
+    # refuses. This job wires the real pieces together and drives payments
+    # through them.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mpesa_tally_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      LOG_LEVEL: silent
+      # Disposable containers: the suite truncates this database and flushes
+      # this Redis index. Never point these at anything that matters.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/mpesa_tally_test
+      REDIS_URL: redis://localhost:6379
+      # Not a secret: the API is never exposed in CI, and nothing real is behind it.
+      ADMIN_API_TOKEN: ci-only-token-0123456789abcdef
+      VERIFY_BEFORE_AUTOPOST: never
+      SAFARICOM_IP_ALLOWLIST: ''
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - run: npm ci
+
+      - name: Migrate
+        run: npm run migrate
+
+      - name: Pipeline tests
+        run: npm run test:integration

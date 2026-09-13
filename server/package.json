@@ -15,7 +15,8 @@
     "replay": "tsx src/scripts/replayFixtures.ts",
     "test": "node --import tsx --test test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "mock-bridge": "tsx src/scripts/mockBridge.ts"
+    "mock-bridge": "tsx src/scripts/mockBridge.ts",
+    "test:integration": "node --import tsx --test test/integration/*.test.ts"
   },
   "dependencies": {
     "bullmq": "^5.34.0",
