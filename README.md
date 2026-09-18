@@ -98,6 +98,11 @@ cd dashboard && npm run dev        # :5173
 Sign in to the dashboard with the `ADMIN_API_TOKEN` from `.env`.
 `npm run stack:stop` shuts the databases down.
 
+If something else on your machine already holds port 3000, set `API_PORT` in
+`.env` -- the dashboard's dev proxy reads the same file, so both move together.
+Set `PUBLIC_BASE_URL` to match, or STK callbacks will be delivered to whatever
+is on the old port instead.
+
 Redis 7.4 rather than the better-known 5.0 Windows port: BullMQ's delayed jobs
 use `ZADD GT`, which is Redis 6.2+. The retry backoff that carries a receipt
 through a closed Tally simply does not work on 5.0.
