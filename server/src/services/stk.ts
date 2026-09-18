@@ -3,12 +3,11 @@ import { query, queryOne, withTransaction } from '../db/pool.js';
 import { credentialsForShortcode, DarajaError } from '../daraja/client.js';
 import {
   describeStkResult,
-  initiateStkPush as darajaInitiate,
   normalizeStkCallback,
-  queryStkStatus,
   type StkCallback,
   type StkOutcome,
 } from '../daraja/stk.js';
+import { initiateStkPush as darajaInitiate, queryStkStatus } from '../daraja/stkClient.js';
 import { audit } from '../lib/audit.js';
 import { logger } from '../lib/logger.js';
 import { fromCents, normalizeMsisdn, toCents } from '../lib/money.js';

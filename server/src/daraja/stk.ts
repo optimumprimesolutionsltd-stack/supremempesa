@@ -1,9 +1,13 @@
 import { z } from 'zod';
-import { darajaPost, type DarajaCredentials } from './client.js';
 import { normalizeMsisdn, toCents } from '../lib/money.js';
 
 /**
- * STK Push (Lipa na M-Pesa Online): the outbound half of the connector.
+ * STK Push (Lipa na M-Pesa Online): the protocol, with no network and no
+ * configuration. The HTTP calls live in ./stkClient.ts.
+ *
+ * The split is deliberate and load-bearing: importing anything that reaches
+ * src/config.ts validates the whole environment at import time, which makes the
+ * module unusable in a unit test that has no database. Keep this file pure.
  *
  * C2B waits for a customer to walk up and pay. STK Push puts the prompt on
  * their handset for a named invoice, which is why an STK payment needs no
@@ -89,21 +93,6 @@ export function buildStkPayload(opts: StkPushOptions): Record<string, unknown> {
   };
 }
 
-export async function initiateStkPush(
-  creds: DarajaCredentials,
-  opts: StkPushOptions,
-): Promise<{ payload: Record<string, unknown>; response: StkPushResponse }> {
-  const payload = buildStkPayload(opts);
-  const response = await darajaPost<StkPushResponse>(
-    '/mpesa/stkpush/v1/processrequest',
-    creds,
-    payload,
-  );
-
-  // Never let the passkey-derived password reach the database or a log.
-  const { Password, ...safePayload } = payload;
-  return { payload: safePayload, response };
-}
 
 export interface StkQueryOptions {
   shortcode: string;
@@ -120,23 +109,6 @@ export interface StkQueryResponse {
   errorMessage?: string;
 }
 
-/**
- * Asks Daraja what became of a push. STK callbacks are lost often enough that
- * this is not optional: without it, a customer who paid sits forever as
- * 'pending' and the merchant chases a payment they already received.
- */
-export async function queryStkStatus(
-  creds: DarajaCredentials,
-  opts: StkQueryOptions,
-): Promise<StkQueryResponse> {
-  const timestamp = stkTimestamp(opts.now);
-  return darajaPost<StkQueryResponse>('/mpesa/stkpushquery/v1/query', creds, {
-    BusinessShortCode: opts.shortcode,
-    Password: stkPassword(opts.shortcode, opts.passkey, timestamp),
-    Timestamp: timestamp,
-    CheckoutRequestID: opts.checkoutRequestId,
-  });
-}
 
 /** The callback Safaricom posts once the customer accepts, declines or times out. */
 export const stkCallbackSchema = z.object({

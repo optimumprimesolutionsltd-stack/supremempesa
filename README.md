@@ -54,12 +54,32 @@ so you can start with everything in review and loosen it once you trust it.
 
 ## Running it
 
-Postgres and Redis are installed **portably** under `.devstack/` (no admin, no
-services registered, no Docker): PostgreSQL 16.9 on 5432 and Redis 7.4.0 on
-6379. Deleting that directory removes every trace of them.
+You need Postgres 14+ and Redis 6.2+. If you already have them, set
+`DATABASE_URL` and `REDIS_URL` and skip to `npm run migrate`.
+
+If you do not, `docker compose up -d postgres redis` is the easy path. On a
+machine with neither Docker nor admin rights, the project is set up to run
+against a **portable stack** under `.devstack/` -- unpacked binaries, no
+installer, no service registered, and deleting the directory removes every
+trace:
 
 ```bash
-npm run stack:start     # postgres + redis (idempotent; safe to re-run)
+# .devstack/ is ~350 MB of vendor build and is deliberately not committed.
+mkdir -p .devstack && cd .devstack
+curl -LO https://get.enterprisedb.com/postgresql/postgresql-16.9-1-windows-x64-binaries.zip
+curl -L -o redis.zip https://github.com/redis-windows/redis-windows/releases/download/7.4.0/Redis-7.4.0-Windows-x64-msys2.zip
+unzip -q postgresql-16.9-1-windows-x64-binaries.zip      # -> .devstack/pgsql
+unzip -q redis.zip -d redis && mv redis/*/* redis/       # -> .devstack/redis
+./pgsql/bin/initdb -D data/pg -U mpesa --pwfile=<(echo mpesa)   -E UTF8 --locale=C --auth-local=trust --auth-host=scram-sha-256
+cd .. && npm run stack:start   # uses scripts/mpesa-redis.conf
+./.devstack/pgsql/bin/createdb -h 127.0.0.1 -U mpesa mpesa_tally
+```
+
+Then, however you got a database:
+
+```bash
+npm run stack:start     # only for the portable stack; idempotent
+npm run stack:status    # what is up, and on which port
 npm run migrate
 npm run seed            # demo tenant, a Paybill and a Till, five open invoices
 ```

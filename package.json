@@ -15,7 +15,8 @@
     "typecheck": "npm --prefix server run typecheck && npm --prefix dashboard run typecheck",
     "build": "npm --prefix server run build && npm --prefix dashboard run build",
     "mock-bridge": "npm --prefix server run mock-bridge",
-    "stack:start": "bash .devstack/start.sh",
-    "stack:stop": "bash .devstack/stop.sh"
+    "stack:start": "bash scripts/devstack.sh start",
+    "stack:stop": "bash scripts/devstack.sh stop",
+    "stack:status": "bash scripts/devstack.sh status"
   }
 }
